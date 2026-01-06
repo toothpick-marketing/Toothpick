@@ -18,8 +18,7 @@ jobs:
           python-version: '3.9'
 
       - name: Install Dependencies
-        run: pip install requests pandas google-api-python-client google-auth
-
+run: pip install requests pandas google-api-python-client google-auth beautifulsoup4 lxml
       - name: Run Sync Script
         env:
           GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
