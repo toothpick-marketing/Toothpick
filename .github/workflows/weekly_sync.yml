@@ -1,0 +1,26 @@
+name: Weekly Toothpick Sync
+
+on:
+  schedule:
+    - cron: '0 8 * * 5' # Runs every Friday at 8:00 AM
+  workflow_dispatch: # Allows you to run it manually
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install Dependencies
+        run: pip install requests pandas google-api-python-client google-auth
+
+      - name: Run Sync Script
+        env:
+          GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
+        run: python sync.py
