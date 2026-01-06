@@ -2,8 +2,8 @@ name: Weekly Toothpick Sync
 
 on:
   schedule:
-    - cron: '0 8 * * 5' # Runs every Friday at 8:00 AM
-  workflow_dispatch: # Allows you to run it manually
+    - cron: '0 8 * * 5'
+  workflow_dispatch:
 
 jobs:
   sync:
@@ -18,7 +18,8 @@ jobs:
           python-version: '3.9'
 
       - name: Install Dependencies
-run: pip install requests pandas google-api-python-client google-auth beautifulsoup4 lxml
+        run: pip install requests pandas google-api-python-client google-auth beautifulsoup4 lxml
+
       - name: Run Sync Script
         env:
           GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
