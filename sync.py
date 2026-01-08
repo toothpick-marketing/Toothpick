@@ -7,95 +7,83 @@ from google.oauth2 import service_account
 
 # --- Configuration ---
 MERCHANT_ID = '5693326724'
-PRODUCT_SITEMAPS = {
-    'EG': [
-        'https://eg.toothpick.com/sitemap-products-1.xml',
-        'https://eg.toothpick.com/sitemap-products-2.xml'
-    ],
-    'SA': [
-        'https://sa.toothpick.com/sitemap-products-1.xml',
-        'https://sa.toothpick.com/sitemap-products-2.xml'
-    ]
+# استخدمنا الروابط الجديدة التي أعطاها لك المبرمج
+NEW_SITEMAPS = {
+    'EG': 'https://eg.toothpick.com/sitemaps/last',
+    'AE': 'https://ae.toothpick.com/sitemaps/last'
 }
 
-# تحديث الـ Headers لمحاكاة Googlebot الحقيقي
 HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-    'Accept-Language': 'en-US,en;q=0.5',
-    'Connection': 'keep-alive',
-    'Upgrade-In-Requests': '1'
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Accept': 'application/xml,text/xml,*/*'
 }
 
-def get_links_from_xml(url):
-    print(f"🔗 Attempting to access: {url}")
+def get_links_from_last_sitemap(url):
+    print(f"🔗 Accessing New Sitemap: {url}")
     try:
-        # استخدام session للحفاظ على استقرار الاتصال
-        session = requests.Session()
-        response = session.get(url, headers=HEADERS, timeout=30)
+        response = requests.get(url, headers=HEADERS, timeout=30)
+        print(f"📡 Status Code: {response.status_code}")
         
         if response.status_code == 200:
             soup = BeautifulSoup(response.content, 'xml')
+            # استخراج الروابط من وسوم <loc>
             links = [loc.text for loc in soup.find_all('loc')]
             return links
         else:
-            print(f"❌ Access Denied: Status {response.status_code} on {url}")
             return []
     except Exception as e:
-        print(f"⚠️ Connection Error: {e}")
+        print(f"⚠️ Error: {e}")
         return []
 
 def run_automated_sync():
-    print("🚀 Starting Toothpick Official Sync (Googlebot Mode)...")
+    print("🚀 Starting Toothpick Automated Sync (Sitemap-Last Mode)...")
     
     # Auth
-    service_account_info = json.loads(os.environ.get('GOOGLE_SERVICE_ACCOUNT'))
-    creds = service_account.Credentials.from_service_account_info(service_account_info)
-    service = build('content', 'v2.1', credentials=creds)
+    try:
+        service_account_info = json.loads(os.environ.get('GOOGLE_SERVICE_ACCOUNT'))
+        creds = service_account.Credentials.from_service_account_info(service_account_info)
+        service = build('content', 'v2.1', credentials=creds)
+    except Exception as e:
+        print(f"❌ Auth Error: {e}")
+        return
 
     all_entries = []
     
-    for country, sitemaps in PRODUCT_SITEMAPS.items():
-        country_links = []
-        for s_url in sitemaps:
-            links = get_links_from_xml(s_url)
-            country_links += links
-        
-        print(f"🎯 Products found for {country}: {len(country_links)}")
+    for country, url in NEW_SITEMAPS.items():
+        links = get_links_from_last_sitemap(url)
+        print(f"🎯 Found {len(links)} products for {country}.")
 
-        # إذا نجح السحب، نرفع أول 150 منتج
-        if country_links:
-            for idx, link in enumerate(country_links[:150]):
-                product_id = f"{country.lower()}_{idx}"
-                brand = link.split('/')[-1].split('-')[0].capitalize()
-                
-                entry = {
-                    'batchId': len(all_entries),
-                    'merchantId': MERCHANT_ID,
-                    'method': 'insert',
-                    'product': {
-                        'offerId': product_id,
-                        'title': f"{brand} - Professional Dental Supply",
-                        'contentLanguage': 'ar',
-                        'targetCountry': country,
-                        'feedLabel': country,
-                        'channel': 'online',
-                        'link': link,
-                        'imageLink': "https://toothpick.com/logo.png",
-                        'availability': 'in stock',
-                        'condition': 'new',
-                        'brand': brand,
-                        'price': {'value': '100', 'currency': 'EGP' if country == 'EG' else 'SAR'}
-                    }
+        for idx, link in enumerate(links[:250]): # سحب أول 250 منتج لكل دولة
+            # استخراج اسم المنتج من الرابط بطريقة ذكية
+            product_slug = link.split('/')[-1].replace('-', ' ').title()
+            
+            entry = {
+                'batchId': len(all_entries),
+                'merchantId': MERCHANT_ID,
+                'method': 'insert',
+                'product': {
+                    'offerId': f"{country.lower()}_{idx}_{idx}",
+                    'title': f"{product_slug} | Toothpick Dental",
+                    'contentLanguage': 'ar' if country == 'EG' else 'en',
+                    'targetCountry': country,
+                    'feedLabel': country,
+                    'channel': 'online',
+                    'link': link,
+                    'imageLink': "https://toothpick.com/logo.png", # سيتم تحسينها لاحقاً
+                    'availability': 'in stock',
+                    'condition': 'new',
+                    'brand': 'Toothpick',
+                    'price': {'value': '100', 'currency': 'EGP' if country == 'EG' else 'AED'}
                 }
-                all_entries.append(entry)
+            }
+            all_entries.append(entry)
 
     if all_entries:
-        print(f"🚀 Pushing {len(all_entries)} products to API...")
+        print(f"🚀 Pushing {len(all_entries)} products to Merchant Center API...")
         service.products().custombatch(body={'entries': all_entries}).execute()
-        print("✅ Success! Sync complete.")
+        print("✅ Sync Successfully Sent!")
     else:
-        print("❌ Still getting 403. Please ask the dev to allow 'Googlebot' User-Agent in Cloudflare.")
+        print("❌ No products found. We might need to check the link content manually.")
 
 if __name__ == "__main__":
     run_automated_sync()
