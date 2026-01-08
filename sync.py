@@ -1,68 +1,62 @@
 import os
 import json
+import pandas as pd
 import requests
 from googleapiclient.discovery import build
 from google.oauth2 import service_account
 
+# --- Configuration ---
 MERCHANT_ID = '5693326724'
-PROXY_URL = "https://script.google.com/macros/s/AKfycbxxJ_JFEpRZvzdZDPhohHup8rjhGTSFIfRsPVlCSps0zzJ77i26lNB8C_cM0xcjaNoY/exec"
-
-def fetch_links(url):
-    try:
-        res = requests.get(f"{PROXY_URL}?url={url}", timeout=60)
-        return [l for l in res.text.split(',') if len(l) > 10]
-    except:
-        return []
+# رابط ملف الـ CSV الخاص بـ Google Sheet (بصيغة التصدير)
+SHEET_URL = "https://docs.google.com/spreadsheets/d/1vfg1AP6ufzDEYmFX3YOZo2r74jpfjmyUB9969YJ-SLg/export?format=csv&gid=0"
 
 def run_automated_sync():
-    print("🤖 Starting FULL AUTOMATION Crawl...")
+    print("🚀 Starting Sync from Google Sheets...")
+    
+    # 1. قراءة البيانات من جوجل شيت مباشرة
+    try:
+        df = pd.read_csv(SHEET_URL)
+        print(f"✅ Successfully read {len(df)} products from Sheets.")
+    except Exception as e:
+        print(f"❌ Error reading Sheet: {e}")
+        return
+
+    # 2. إعداد الاتصال بـ Google Merchant API
     service_account_info = json.loads(os.environ.get('GOOGLE_SERVICE_ACCOUNT'))
     creds = service_account.Credentials.from_service_account_info(service_account_info)
     service = build('content', 'v2.1', credentials=creds)
 
-    all_links = {'EG': [], 'AE': []}
-    
-    # أتمتة: فحص أول 5 صفحات من المنتجات تلقائياً لكل دولة
-    for country in ['EG', 'AE']:
-        base = f"https://{country.lower()}.toothpick.com/{'ar' if country=='EG' else 'en'}/products"
-        for page in range(1, 6):
-            p_url = f"{base}?page={page}"
-            found = fetch_links(p_url)
-            all_links[country].extend(found)
-        
-        all_links[country] = list(set(all_links[country]))
-        print(f"✅ Found {len(all_links[country])} products for {country} WITHOUT manual work!")
+    all_entries = []
+    for _, row in df.iterrows():
+        entry = {
+            'batchId': len(all_entries),
+            'merchantId': MERCHANT_ID,
+            'method': 'insert',
+            'product': {
+                'offerId': str(row['id']),
+                'title': str(row['title']),
+                'description': str(row['description']),
+                'link': str(row['link']),
+                'imageLink': str(row['image_link']),
+                'contentLanguage': 'ar' if row['country_code'] == 'EG' else 'en',
+                'targetCountry': str(row['country_code']),
+                'feedLabel': str(row['country_code']),
+                'channel': 'online',
+                'availability': 'in stock',
+                'condition': 'new',
+                'brand': str(row['brand']),
+                'price': {'value': str(row['sale_price']), 'currency': str(row['currency'])}
+            }
+        }
+        all_entries.append(entry)
 
-    # تحويل الروابط إلى منتجات في Google
-    entries = []
-    for country, links in all_links.items():
-        for idx, link in enumerate(links):
-            title = link.split('/')[-1].replace('-', ' ').title()
-            entries.append({
-                'batchId': len(entries),
-                'merchantId': MERCHANT_ID,
-                'method': 'insert',
-                'product': {
-                    'offerId': f"{country.lower()}_{idx}",
-                    'title': title,
-                    'link': link,
-                    'imageLink': "https://toothpick.com/logo.png",
-                    'contentLanguage': 'ar' if country == 'EG' else 'en',
-                    'targetCountry': country,
-                    'feedLabel': country,
-                    'channel': 'online',
-                    'availability': 'in stock',
-                    'condition': 'new',
-                    'price': {'value': '100', 'currency': 'EGP' if country == 'EG' else 'AED'}
-                }
-            })
-
-    if entries:
-        # إرسال البيانات على دفعات
-        for i in range(0, len(entries), 100):
-            batch = entries[i:i+100]
+    # 3. إرسال البيانات
+    if all_entries:
+        # إرسال على دفعات كل دفعة 100 منتج
+        for i in range(0, len(all_entries), 100):
+            batch = all_entries[i:i+100]
             service.products().custombatch(body={'entries': batch}).execute()
-        print(f"🏁 DONE! Total Synced: {len(entries)} products.")
+        print(f"🏁 DONE! Total {len(all_entries)} products synced to Merchant Center.")
 
 if __name__ == "__main__":
     run_automated_sync()
